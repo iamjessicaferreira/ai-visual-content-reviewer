@@ -33,7 +33,7 @@ export async function generateFeedbackWithGroq(
         ],
             model: 'llama-3.1-8b-instant',
             temperature: 0.7,
-            max_tokens: 2048, // Reduced for faster responses
+            max_tokens: 4096, // Increased to prevent truncation
       },
       {
         signal: controller.signal as any,

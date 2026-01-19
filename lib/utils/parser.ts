@@ -43,6 +43,10 @@ function ensureCompleteSentences(text: string): string {
  * Clean text by removing JSON artifacts and formatting issues
  */
 function cleanText(text: string): string {
+  if (!text || text.trim().length === 0) {
+    return '';
+  }
+  
   // Remove JSON-like artifacts (quotes, colons at start, etc.)
   let cleaned = text
     // Remove leading/trailing quotes and colons
@@ -51,7 +55,17 @@ function cleanText(text: string): string {
     .replace(/^["']?\w+["']?\s*:\s*["']?/g, '')
     // Remove trailing commas and quotes
     .replace(/["',]+$/g, '')
+    // Remove leading closing brackets/parentheses (fragments like ") button.")
+    .replace(/^[)\]},;:]+\s*/g, '')
     .trim();
+  
+  // If the text starts with a conjunction, it's likely a fragment
+  // Don't try to salvage it - it will be filtered out by isIncompleteItem
+  // Just ensure proper formatting for detection
+  if (/^(and|or|but|that|which)\s+/i.test(cleaned)) {
+    // These are always fragments - keep as is for isIncompleteItem to detect
+    // Don't modify, just return as is
+  }
   
   // Ensure text ends at complete sentences
   cleaned = ensureCompleteSentences(cleaned);
@@ -207,6 +221,20 @@ function extractListItems(text: string): string[] {
       return true;
     }
     
+    // Check for items that start with strange characters (fragments)
+    // Examples: ") button.", "and supporting text..."
+    if (/^[)\]},;:]/.test(trimmed)) return true; // Starts with closing brackets/punctuation
+    // Items starting with conjunctions are almost always fragments, regardless of length
+    // Examples: "and supporting text...", "or button.", etc.
+    if (/^and\s+/i.test(trimmed)) return true; // Starts with "and" (always a fragment)
+    if (/^or\s+/i.test(trimmed)) return true; // Starts with "or" (always a fragment)
+    if (/^but\s+/i.test(trimmed)) return true; // Starts with "but" (always a fragment)
+    if (/^that\s+/i.test(trimmed)) return true; // Starts with "that" (always a fragment)
+    if (/^which\s+/i.test(trimmed)) return true; // Starts with "which" (always a fragment)
+    if (/^with\s+/i.test(trimmed) && trimmed.length < 150) return true; // Starts with "with" (likely a fragment)
+    if (/^for\s+/i.test(trimmed) && trimmed.length < 150) return true; // Starts with "for" (likely a fragment)
+    if (/^to\s+/i.test(trimmed) && trimmed.length < 150) return true; // Starts with "to" (likely a fragment)
+    
     // Check for incomplete patterns
     if (/\([^)]*$/.test(trimmed)) return true; // Unclosed parentheses
     if (/\[[^\]]*$/.test(trimmed)) return true; // Unclosed brackets
@@ -222,6 +250,12 @@ function extractListItems(text: string): string[] {
     if (/\b(prominent|clear|effective|strong|better|improved|enhanced)\s*$/.test(trimmed)) return true;
     if (/\b(button|cta|call|action|element|feature|section)\s*$/.test(trimmed) && !trimmed.match(/[.!?]\s*$/)) return true;
     
+    // Check for items that are clearly fragments (short and don't start with capital or are mid-sentence)
+    if (trimmed.length < 20 && !/^[A-Z]/.test(trimmed) && !trimmed.match(/^["']/)) {
+      // Very short items that don't start with capital are likely fragments
+      return true;
+    }
+    
     // Check if text doesn't end with punctuation and seems incomplete
     if (!trimmed.match(/[.!?]\s*$/) && trimmed.length > 10) {
       const lastWords = trimmed.split(/\s+/).slice(-3).join(' ').toLowerCase();
@@ -234,10 +268,19 @@ function extractListItems(text: string): string[] {
         'to improve',
         'for better',
         'with better',
+        'supporting text',
+        'that outlines',
+        'of the product',
       ];
       if (incompleteEndings.some(ending => lastWords.includes(ending))) {
         return true;
       }
+    }
+    
+    // Check for items that look like they're cut off mid-sentence
+    // If it ends with a period but starts with lowercase or conjunction, it's likely a fragment
+    if (trimmed.match(/[.!?]\s*$/) && /^(and|or|but|that|which|with|for|to)\s+/i.test(trimmed)) {
+      return true;
     }
     
     return false;

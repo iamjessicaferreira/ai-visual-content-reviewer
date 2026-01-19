@@ -7,6 +7,7 @@ import { getImageCaptionWithBLIP, generateFeedbackWithGroq } from '@/lib/ai/groq
 import { getPromptForMode } from '@/lib/ai/prompts';
 import { parseAIResponse } from '@/lib/utils/parser';
 import { hasEmptyRequiredFields } from '@/lib/utils/result-checker';
+import { isHallucinating } from '@/lib/utils/hallucination-detector';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Vercel Pro plan allows up to 60s
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
     const imageFile = formData.get('image') as File;
     const mode = formData.get('mode') as string;
     const customPrompt = formData.get('customPrompt') as string | null;
+    const feedbackContextStr = formData.get('feedbackContext') as string | null;
 
     // Validate inputs
     if (!imageFile) {
@@ -52,9 +54,39 @@ export async function POST(request: NextRequest) {
     }
 
     // Get prompt first (synchronous, fast)
+    // Include feedback context if provided by client
+    let feedbackContext = '';
+    if (feedbackContextStr) {
+      try {
+        const feedbacks = JSON.parse(feedbackContextStr);
+        if (Array.isArray(feedbacks) && feedbacks.length > 0) {
+          const reasons = feedbacks
+            .filter((f: any) => f.feedback === 'negative' && f.reason)
+            .map((f: any) => f.reason);
+          
+          if (reasons.length > 0) {
+            feedbackContext = `
+
+IMPORTANT CONTEXT FROM PREVIOUS USER FEEDBACK:
+The user has provided negative feedback on previous analyses in this mode. Please learn from these issues and avoid repeating them:
+
+${reasons.slice(0, 5).map((issue: string, idx: number) => `${idx + 1}. ${issue}`).join('\n')}
+
+Based on this feedback, ensure your analysis:
+- Addresses the specific issues mentioned above
+- Avoids the mistakes identified in previous feedback
+- Provides more accurate and relevant insights`;
+          }
+        }
+      } catch (e) {
+        // Ignore errors parsing feedback context
+      }
+    }
+    
     const prompt = getPromptForMode(
       mode as AnalysisMode,
-      mode === 'custom' ? customPrompt || undefined : undefined
+      mode === 'custom' ? customPrompt || undefined : undefined,
+      feedbackContext
     );
 
     let analysisText: string;
@@ -65,7 +97,7 @@ export async function POST(request: NextRequest) {
       if (process.env.GEMINI_API_KEY) {
         // Convert to base64 only for Gemini
         if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
-        analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000); // Reduced timeout
+        analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000, mode); // Pass mode for temperature adjustment
       } else {
         throw new Error('GEMINI_API_KEY not set, trying Hugging Face');
       }
@@ -117,15 +149,18 @@ export async function POST(request: NextRequest) {
     // Parse and normalize the response
     let result: AnalysisResult = parseAIResponse(analysisText);
     result.mode = mode as AnalysisMode;
+    // Generate unique ID for this result (for feedback tracking)
+    result.id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    // Auto-retry if any required field is empty (only 1 retry for speed)
-    // Only retry if result is truly incomplete (not just generic messages)
-    if (hasEmptyRequiredFields(result)) {
+    // Auto-retry if any required field is empty OR if AI is hallucinating (only 1 retry for speed)
+    // Only retry if result is truly incomplete (not just generic messages) or hallucinating
+    // Pass mode for stricter validation in marketing mode
+    if (hasEmptyRequiredFields(result) || isHallucinating(result, mode)) {
       try {
         // Retry with the same strategy (prioritize Gemini)
         if (process.env.GEMINI_API_KEY) {
           if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
-          analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000);
+          analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000, mode);
         } else if (process.env.GROQ_API_KEY) {
           // If no Gemini, try Groq fallback
           if (!imageBase64) imageBase64 = await fileToBase64(imageFile);

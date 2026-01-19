@@ -75,34 +75,73 @@ export default function ImageUploader({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={`
-          border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 flex-1 flex flex-col items-center justify-center
+          border-2 border-dashed rounded-xl p-12 text-center 
+          flex-1 flex flex-col items-center justify-center
+          transition-all duration-300 ease-out
           ${
             isDragging
-              ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg scale-[1.02]'
-              : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50 hover:shadow-md'
+              ? 'border-blue-500 dark:border-blue-400 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 shadow-xl scale-[1.02] ring-4 ring-blue-200/50 dark:ring-blue-800/50'
+              : 'border-slate-300 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-gradient-to-br hover:from-slate-50 dark:hover:from-slate-800/50 hover:to-blue-50/30 dark:hover:to-blue-900/20 hover:shadow-lg'
           }
-          ${error ? 'border-red-500 bg-red-50' : ''}
+          ${error ? 'border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/20 animate-shake' : ''}
         `}
       >
         {preview ? (
-          <div className="space-y-4">
-            <img
-              src={preview}
-              alt="Preview"
-              className="max-h-64 mx-auto rounded-lg shadow-md"
-            />
+          <div className="space-y-4 w-full animate-in fade-in zoom-in-95 duration-500">
+            <div className="relative group">
+              <img
+                src={preview}
+                alt="Preview"
+                className="max-h-64 mx-auto rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-[1.02]"
+              />
+              {/* Overlay gradient on hover */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+              {/* Success badge */}
+              <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Ready
+              </div>
+            </div>
             <button
               onClick={() => {
                 setPreview(null);
                 onImageSelect(null);
               }}
-              className="text-sm text-gray-600 hover:text-gray-800 underline"
+              className="
+                mx-auto flex items-center gap-2 px-4 py-2.5 
+                bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600
+                text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg
+                shadow-sm hover:shadow-md
+                transform hover:scale-105 active:scale-95
+                transition-all duration-300 ease-out
+                group
+              "
             >
-              Remove image
+              <svg 
+                className="w-4 h-4 transition-transform duration-300 group-hover:rotate-90" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <span>Remove Image</span>
             </button>
           </div>
         ) : (
           <>
+            {isDragging && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-semibold text-lg flex items-center gap-2">
+                  <svg className="w-6 h-6 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Drop image here
+                </div>
+              </div>
+            )}
             <input
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/webp"
@@ -112,11 +151,11 @@ export default function ImageUploader({
             />
             <label
               htmlFor="image-upload"
-              className="cursor-pointer block space-y-4"
+              className="cursor-pointer block space-y-4 group"
             >
-              <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shadow-inner">
+              <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 via-indigo-100 to-purple-100 flex items-center justify-center shadow-inner group-hover:shadow-lg transition-all duration-300 group-hover:scale-110">
                 <svg
-                  className="h-10 w-10 text-blue-600"
+                  className="h-10 w-10 text-blue-600 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -129,10 +168,14 @@ export default function ImageUploader({
                   />
                 </svg>
               </div>
-              <div className="text-slate-700">
-                <span className="font-semibold text-lg">Click to upload</span> or <span className="font-semibold">drag and drop</span>
+              <div className="text-slate-700 dark:text-slate-300 space-y-1">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="font-semibold text-lg transition-colors duration-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">Click to upload</span>
+                  <span className="text-slate-400 dark:text-slate-500">or</span>
+                  <span className="font-semibold text-lg transition-colors duration-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">drag and drop</span>
+                </div>
               </div>
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
                 PNG, JPG, WEBP up to 10MB
               </p>
             </label>
@@ -140,7 +183,14 @@ export default function ImageUploader({
         )}
       </div>
       {error && (
-        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <p className="text-sm text-red-600 dark:text-red-400 font-medium flex items-center gap-2">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {error}
+          </p>
+        </div>
       )}
     </div>
   );

@@ -8,6 +8,7 @@ export interface AnalysisResult {
     ctas: string[];
   };
   mode?: AnalysisMode; // Analysis mode used
+  id?: string; // Unique ID for tracking feedback
 }
 
 export type AnalysisMode = 'marketing' | 'ux' | 'accessibility' | 'brand' | 'color-typography' | 'social-media' | 'conversion' | 'custom';
