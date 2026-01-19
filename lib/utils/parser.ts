@@ -1,6 +1,45 @@
 import { AnalysisResult } from '@/types/analysis';
 
 /**
+ * Ensure text ends at a complete sentence (ends with punctuation)
+ * If text is incomplete, cut it at the last complete sentence
+ */
+function ensureCompleteSentences(text: string): string {
+  if (!text || text.trim().length === 0) {
+    return text;
+  }
+
+  const trimmed = text.trim();
+  
+  // If already ends with punctuation, return as is
+  if (trimmed.match(/[.!?]\s*$/)) {
+    return trimmed;
+  }
+
+  // Find the last complete sentence by looking for the last occurrence of . ! or ?
+  // We'll split the text and keep only complete sentences
+  const lastPunctuationIndex = Math.max(
+    trimmed.lastIndexOf('.'),
+    trimmed.lastIndexOf('!'),
+    trimmed.lastIndexOf('?')
+  );
+  
+  if (lastPunctuationIndex > 0) {
+    // Extract text up to and including the last punctuation
+    const completeText = trimmed.substring(0, lastPunctuationIndex + 1).trim();
+    
+    // If we have complete text, return it
+    if (completeText.length > 0) {
+      return completeText;
+    }
+  }
+
+  // If no complete sentences found, return empty string
+  // (better to show nothing than incomplete text)
+  return '';
+}
+
+/**
  * Clean text by removing JSON artifacts and formatting issues
  */
 function cleanText(text: string): string {
@@ -13,6 +52,9 @@ function cleanText(text: string): string {
     // Remove trailing commas and quotes
     .replace(/["',]+$/g, '')
     .trim();
+  
+  // Ensure text ends at complete sentences
+  cleaned = ensureCompleteSentences(cleaned);
   
   return cleaned;
 }
@@ -65,7 +107,7 @@ export function parseAIResponse(text: string): AnalysisResult {
     result.description = cleanText(descMatch[1]);
   } else {
     // Try alternative pattern
-    const descAlt = cleanedText.match(/1\.\s*Description[:\-]?\s*(.+?)(?:\n\s*2\.|$)/is);
+    const descAlt = cleanedText.match(/1\.\s*Description[:\-]?\s*([\s\S]+?)(?:\n\s*2\.|$)/i);
     if (descAlt && descAlt[1]) {
       result.description = cleanText(descAlt[1]);
     } else {
@@ -83,7 +125,7 @@ export function parseAIResponse(text: string): AnalysisResult {
     result.clarity = cleanText(clarityMatch[1]);
   } else {
     // Try alternative pattern
-    const clarityAlt = cleanedText.match(/2\.\s*Message\s+Clarity[:\-]?\s*(.+?)(?:\n\s*3\.|$)/is);
+    const clarityAlt = cleanedText.match(/2\.\s*Message\s+Clarity[:\-]?\s*([\s\S]+?)(?:\n\s*3\.|$)/i);
     if (clarityAlt && clarityAlt[1]) {
       result.clarity = cleanText(clarityAlt[1]);
     } else {
@@ -214,7 +256,7 @@ function extractListItems(text: string): string[] {
     if (bulletMatch) {
       // Save previous item if exists
       if (currentItem.trim().length > 0) {
-        const cleanedItem = cleanText(currentItem.trim());
+        const cleanedItem = ensureCompleteSentences(cleanText(currentItem.trim()));
         if (cleanedItem.length > 2 && 
             !cleanedItem.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?)[:\-]?$/i) &&
             !cleanedItem.match(/^["':\s]+$/) &&
@@ -231,7 +273,7 @@ function extractListItems(text: string): string[] {
       currentItem += ' ' + line;
     } else if (currentItem && (line.match(/^\d+[.)]\s/) || line.match(/^[-*•]\s/) || line.match(/^[A-Z][a-z]+\s*:/))) {
       // Save current item when we hit a new section
-      const cleanedItem = cleanText(currentItem.trim());
+      const cleanedItem = ensureCompleteSentences(cleanText(currentItem.trim()));
       if (cleanedItem.length > 2 && 
           !cleanedItem.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?)[:\-]?$/i) &&
           !cleanedItem.match(/^["':\s]+$/) &&
@@ -245,7 +287,7 @@ function extractListItems(text: string): string[] {
   
   // Don't forget the last item
   if (currentItem.trim().length > 0) {
-    const cleanedItem = cleanText(currentItem.trim());
+    const cleanedItem = ensureCompleteSentences(cleanText(currentItem.trim()));
     if (cleanedItem.length > 2 && 
         !cleanedItem.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?)[:\-]?$/i) &&
         !cleanedItem.match(/^["':\s]+$/) &&
@@ -265,7 +307,7 @@ function extractListItems(text: string): string[] {
           return match ? match[1].trim() : '';
         })
         .filter(item => item.length > 0)
-        .map(item => cleanText(item))
+        .map(item => ensureCompleteSentences(cleanText(item)))
         .filter(item => {
           return item.length > 2 && 
                  !item.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?)[:\-]?$/i) &&
@@ -285,7 +327,7 @@ function extractListItems(text: string): string[] {
         return match ? match[1].trim() : '';
       })
       .filter(item => item.length > 0)
-      .map(item => cleanText(item))
+      .map(item => ensureCompleteSentences(cleanText(item)))
       .filter(item => {
         // Filter out section headers, but allow shorter items
         return item.length > 2 && 
@@ -299,7 +341,7 @@ function extractListItems(text: string): string[] {
   if (items.length === 0) {
     const lines = cleaned
       .split('\n')
-      .map(l => cleanText(l))
+      .map(l => ensureCompleteSentences(cleanText(l)))
       .filter(l => {
         return l.length > 5 && 
                !l.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?|description|clarity)[:\-]?$/i) &&
@@ -312,12 +354,12 @@ function extractListItems(text: string): string[] {
 
   return items
     .filter(item => item && item.trim().length > 0)
-    .map(item => cleanText(item))
+    .map(item => ensureCompleteSentences(cleanText(item)))
     .filter(item => item.length > 0); // Don't limit - return all valid items
 }
 
 function normalizeResult(result: Partial<AnalysisResult>): AnalysisResult {
-  // Helper to ensure array items are strings
+  // Helper to ensure array items are strings and complete sentences
   const normalizeStringArray = (arr: any[]): string[] => {
     if (!Array.isArray(arr)) return [];
     return arr
@@ -336,16 +378,18 @@ function normalizeResult(result: Partial<AnalysisResult>): AnalysisResult {
                !item.match(/^["':\s]+$/) &&
                !item.match(/^(headlines?|ctas?|variations?|copy|issues?|suggestions?)[:\-]?$/i);
       })
+      .map(item => ensureCompleteSentences(item)) // Ensure each item ends at complete sentence
+      .filter(item => item.length > 0) // Remove items that became empty after ensuring complete sentences
       .slice(0, 10);
   };
 
-  // Clean description and clarity
+  // Clean description and clarity, ensuring complete sentences
   const description = result.description 
-    ? cleanText(String(result.description))
+    ? ensureCompleteSentences(cleanText(String(result.description)))
     : 'Image analysis completed.';
   
   const clarity = result.clarity
-    ? cleanText(String(result.clarity))
+    ? ensureCompleteSentences(cleanText(String(result.clarity)))
     : 'Message clarity evaluation completed.';
 
   return {

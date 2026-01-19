@@ -3,7 +3,7 @@ const HF_API_TOKEN = process.env.HF_API_TOKEN;
 export async function analyzeImageWithHF(
   imageData: File | Blob | string,
   prompt: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 10000 // Optimized default timeout
 ): Promise<string> {
   // Try multiple vision-language models in order (with active inference providers)
   // Note: Many models may not be available via public Inference API

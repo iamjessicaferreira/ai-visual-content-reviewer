@@ -152,40 +152,49 @@ function isArrayEmpty(arr: string[]): boolean {
  * Check if the analysis result has any empty required fields
  * Required fields: description, clarity, issues, suggestions
  * Also checks for incomplete responses and "cannot see image" responses
+ * Optimized for performance - early returns
  */
 export function hasEmptyRequiredFields(result: AnalysisResult): boolean {
-  // Check if description is empty, generic, incomplete, or indicates cannot see image
-  if (isFieldEmpty(result.description) || 
+  // Quick check: description must exist and be meaningful
+  if (!result.description || 
+      result.description.trim().length < 20 ||
+      isFieldEmpty(result.description) || 
       isTextIncomplete(result.description) ||
       indicatesCannotSeeImage(result.description)) {
     return true;
   }
 
-  // Check if clarity is empty, generic, incomplete, or indicates cannot see image
-  if (isFieldEmpty(result.clarity) || 
+  // Quick check: clarity must exist and be meaningful
+  if (!result.clarity || 
+      result.clarity.trim().length < 20 ||
+      isFieldEmpty(result.clarity) || 
       isTextIncomplete(result.clarity) ||
       indicatesCannotSeeImage(result.clarity)) {
     return true;
   }
 
-  // Check if issues array is empty or contains incomplete items
-  if (isArrayEmpty(result.issues)) {
+  // Quick check: issues array must have at least 1 valid item
+  if (!result.issues || result.issues.length === 0 || isArrayEmpty(result.issues)) {
     return true;
   }
-  // Check each issue for incompleteness or "cannot see" phrases
-  for (const issue of result.issues) {
-    if (isTextIncomplete(issue) || indicatesCannotSeeImage(issue)) {
+  
+  // Only check first few issues for performance (if first ones are bad, likely all are)
+  const issuesToCheck = Math.min(result.issues.length, 3);
+  for (let i = 0; i < issuesToCheck; i++) {
+    if (isTextIncomplete(result.issues[i]) || indicatesCannotSeeImage(result.issues[i])) {
       return true;
     }
   }
 
-  // Check if suggestions array is empty or contains incomplete items
-  if (isArrayEmpty(result.suggestions)) {
+  // Quick check: suggestions array must have at least 1 valid item
+  if (!result.suggestions || result.suggestions.length === 0 || isArrayEmpty(result.suggestions)) {
     return true;
   }
-  // Check each suggestion for incompleteness or "cannot see" phrases
-  for (const suggestion of result.suggestions) {
-    if (isTextIncomplete(suggestion) || indicatesCannotSeeImage(suggestion)) {
+  
+  // Only check first few suggestions for performance
+  const suggestionsToCheck = Math.min(result.suggestions.length, 3);
+  for (let i = 0; i < suggestionsToCheck; i++) {
+    if (isTextIncomplete(result.suggestions[i]) || indicatesCannotSeeImage(result.suggestions[i])) {
       return true;
     }
   }

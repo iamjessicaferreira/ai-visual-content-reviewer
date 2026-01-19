@@ -3,7 +3,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export async function analyzeImageWithGemini(
   imageBase64: string,
   prompt: string,
-  timeoutMs: number = 20000 // Reduced default timeout
+  timeoutMs: number = 15000 // Optimized default timeout
 ): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not set');
@@ -45,7 +45,7 @@ export async function analyzeImageWithGemini(
               ],
               generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 8192, // Increased to prevent truncation
+                maxOutputTokens: 4096, // Reduced for faster responses
                 topP: 0.95,
                 topK: 40,
               },

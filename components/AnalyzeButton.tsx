@@ -20,16 +20,16 @@ export default function AnalyzeButton({
   useEffect(() => {
     if (loading) {
       setProgress(0);
-      // Simulate progress from 0% to 90% over time
+      // Simulate progress from 0% to 90% over time (optimized interval)
       const interval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 90) {
             return prev; // Stop at 90% until loading completes
           }
-          // Gradually increase progress
-          return Math.min(prev + Math.random() * 15, 90);
+          // Gradually increase progress (smoother, less frequent updates)
+          return Math.min(prev + Math.random() * 10, 90);
         });
-      }, 200);
+      }, 300); // Increased interval for better performance
 
       return () => clearInterval(interval);
     } else {

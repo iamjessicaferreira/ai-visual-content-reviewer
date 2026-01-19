@@ -7,7 +7,7 @@ export async function generateFeedbackWithGroq(
   imageCaption: string,
   mode: string,
   prompt: string,
-  timeoutMs: number = 15000
+  timeoutMs: number = 8000 // Optimized default timeout
 ): Promise<string> {
   if (!GROQ_API_KEY) {
     throw new Error('GROQ_API_KEY is not set');
@@ -33,7 +33,7 @@ export async function generateFeedbackWithGroq(
         ],
             model: 'llama-3.1-8b-instant',
             temperature: 0.7,
-            max_tokens: 4096, // Increased to prevent truncation
+            max_tokens: 2048, // Reduced for faster responses
       },
       {
         signal: controller.signal as any,
@@ -61,7 +61,7 @@ export async function generateFeedbackWithGroq(
 
 export async function getImageCaptionWithBLIP(
   imageBase64: string,
-  timeoutMs: number = 15000
+  timeoutMs: number = 8000 // Optimized default timeout
 ): Promise<string> {
   // Convert base64 to Buffer
   const imageBuffer = Buffer.from(imageBase64, 'base64');

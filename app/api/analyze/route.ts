@@ -51,33 +51,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert image to base64 for fallback, but pass File directly to HF
-    const imageBase64 = await fileToBase64(imageFile);
+    // Get prompt first (synchronous, fast)
     const prompt = getPromptForMode(
       mode as AnalysisMode,
       mode === 'custom' ? customPrompt || undefined : undefined
     );
 
     let analysisText: string;
+    let imageBase64: string | null = null; // Lazy load base64 only when needed
 
     try {
       // Try Gemini Vision API first (true VLM that accepts custom prompts)
       if (process.env.GEMINI_API_KEY) {
-        console.log('Trying Gemini Vision API (primary)...');
-        analysisText = await analyzeImageWithGemini(imageBase64, prompt, 20000); // Reduced timeout
+        // Convert to base64 only for Gemini
+        if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
+        analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000); // Reduced timeout
       } else {
         throw new Error('GEMINI_API_KEY not set, trying Hugging Face');
       }
     } catch (geminiError: any) {
-      console.error('Gemini API error:', geminiError);
-
       // Fallback 1: Try Hugging Face (captioning models, limited prompt support)
+      // HF accepts File directly, no base64 conversion needed
       try {
-        console.log('Trying Hugging Face API...');
-        analysisText = await analyzeImageWithHF(imageFile, prompt, 15000); // Reduced timeout
+        analysisText = await analyzeImageWithHF(imageFile, prompt, 10000); // Reduced timeout
       } catch (hfError: any) {
-        console.error('HF API error:', hfError);
-
         // Fallback 2: Use BLIP for captioning, then Groq for structured feedback
         // If BLIP also fails, use Groq with a generic image description
         try {
@@ -89,11 +86,10 @@ export async function POST(request: NextRequest) {
 
           let caption: string;
           try {
-            // Try to get image caption with BLIP
-            caption = await getImageCaptionWithBLIP(imageBase64, 10000); // Reduced timeout
-            console.log('BLIP caption:', caption);
+            // Convert to base64 only for BLIP
+            if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
+            caption = await getImageCaptionWithBLIP(imageBase64, 8000); // Reduced timeout
           } catch (blipError: any) {
-            console.error('BLIP failed, using generic description:', blipError);
             // If BLIP fails, use a generic description
             caption = `An image file (${imageFile.type}, ${(imageFile.size / 1024).toFixed(0)}KB). Please analyze this visual content based on the analysis mode selected.`;
           }
@@ -103,10 +99,9 @@ export async function POST(request: NextRequest) {
             caption,
             mode,
             prompt,
-            10000 // Reduced timeout
+            8000 // Reduced timeout
           );
         } catch (fallbackError: any) {
-          console.error('Fallback error:', fallbackError);
           return NextResponse.json<AnalysisError>(
             {
               error:
@@ -123,72 +118,33 @@ export async function POST(request: NextRequest) {
     let result: AnalysisResult = parseAIResponse(analysisText);
     result.mode = mode as AnalysisMode;
 
-    // Auto-retry if any required field is empty (max 2 retries for speed)
-    const maxRetries = 2;
-    let retryCount = 0;
-    
-    while (hasEmptyRequiredFields(result) && retryCount < maxRetries) {
-      console.log(`Result has empty/incomplete required fields, retrying analysis (attempt ${retryCount + 1}/${maxRetries})...`);
-      console.log(`Validation check - Description: "${result.description?.substring(0, 100)}...", Clarity: "${result.clarity?.substring(0, 100)}...", Issues: ${result.issues.length}, Suggestions: ${result.suggestions.length}`);
-      console.log(`Issues: ${JSON.stringify(result.issues)}, Suggestions: ${JSON.stringify(result.suggestions)}`);
-      retryCount++;
-
+    // Auto-retry if any required field is empty (only 1 retry for speed)
+    // Only retry if result is truly incomplete (not just generic messages)
+    if (hasEmptyRequiredFields(result)) {
       try {
         // Retry with the same strategy (prioritize Gemini)
-        try {
-          if (process.env.GEMINI_API_KEY) {
-            analysisText = await analyzeImageWithGemini(imageBase64, prompt, 20000); // Reduced timeout
-          } else {
-            throw new Error('GEMINI_API_KEY not set, trying Hugging Face');
-          }
-        } catch (geminiError: any) {
+        if (process.env.GEMINI_API_KEY) {
+          if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
+          analysisText = await analyzeImageWithGemini(imageBase64, prompt, 15000);
+        } else if (process.env.GROQ_API_KEY) {
+          // If no Gemini, try Groq fallback
+          if (!imageBase64) imageBase64 = await fileToBase64(imageFile);
+          let caption: string;
           try {
-            analysisText = await analyzeImageWithHF(imageFile, prompt, 15000); // Reduced timeout
-          } catch (hfError: any) {
-            if (process.env.GROQ_API_KEY) {
-              let caption: string;
-              try {
-                caption = await getImageCaptionWithBLIP(imageBase64, 10000); // Reduced timeout
-              } catch {
-                caption = `An image file (${imageFile.type}, ${(imageFile.size / 1024).toFixed(0)}KB). Please analyze this visual content based on the analysis mode selected.`;
-              }
-              analysisText = await generateFeedbackWithGroq(caption, mode, prompt, 10000); // Reduced timeout
-            } else {
-              throw new Error('No API keys available for retry');
-            }
+            caption = await getImageCaptionWithBLIP(imageBase64, 8000);
+          } catch {
+            caption = `An image file (${imageFile.type}, ${(imageFile.size / 1024).toFixed(0)}KB). Please analyze this visual content based on the analysis mode selected.`;
           }
+          analysisText = await generateFeedbackWithGroq(caption, mode, prompt, 8000);
+        } else {
+          analysisText = await analyzeImageWithHF(imageFile, prompt, 10000);
         }
 
         result = parseAIResponse(analysisText);
         result.mode = mode as AnalysisMode;
-        
-        // Log the result after retry to help debug
-        console.log(`After retry ${retryCount}: Description length: ${result.description.length}, Clarity length: ${result.clarity.length}, Issues: ${result.issues.length}, Suggestions: ${result.suggestions.length}`);
-        
-        // If still has empty fields after retry, continue to next retry
-        if (hasEmptyRequiredFields(result) && retryCount < maxRetries) {
-          console.log(`Still has empty fields after retry ${retryCount}, will retry again...`);
-        }
       } catch (retryError: any) {
-        console.error('Retry failed:', retryError);
-        // If retry fails, continue to next retry attempt (don't break immediately)
-        if (retryCount >= maxRetries) {
-          console.log('Max retries reached, returning current result');
-          break;
-        }
+        // If retry fails, return current result (better than nothing)
       }
-    }
-    
-    // Final validation log
-    if (hasEmptyRequiredFields(result)) {
-      console.warn('WARNING: Result still has empty/incomplete fields after all retries:', {
-        description: result.description.substring(0, 50),
-        clarity: result.clarity.substring(0, 50),
-        issuesCount: result.issues.length,
-        suggestionsCount: result.suggestions.length,
-      });
-    } else {
-      console.log('SUCCESS: All required fields are complete after retries');
     }
 
 
