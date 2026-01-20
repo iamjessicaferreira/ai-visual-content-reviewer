@@ -48,24 +48,26 @@ export function validateImageFile(file: File): { valid: boolean; error?: string 
     };
   }
 
-  // Check file type
-  if (!file.type || !allowedTypes.includes(file.type)) {
-    return {
-      valid: false,
-      error: `Invalid file type (${file.type || 'unknown'}). Please upload a PNG, JPG, or WebP image.`,
-    };
-  }
-
-  // Check file name extension as fallback
+  // Check file name extension first (more reliable than MIME type)
   const fileName = file.name.toLowerCase();
   const validExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
   const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
   
-  if (!hasValidExtension && !file.type) {
+  // Check file type (MIME type)
+  const hasValidMimeType = file.type && allowedTypes.includes(file.type);
+  
+  // Accept file if either extension OR MIME type is valid
+  // Some browsers/systems don't set MIME type correctly, so we're more permissive
+  if (!hasValidExtension && !hasValidMimeType) {
     return {
       valid: false,
-      error: 'Invalid file extension. Please upload a PNG, JPG, or WebP image.',
+      error: `Invalid file type (${file.type || 'unknown'}) or extension. Please upload a PNG, JPG, or WebP image.`,
     };
+  }
+  
+  // If extension is valid but MIME type is not, log a warning but allow it
+  if (hasValidExtension && !hasValidMimeType) {
+    console.warn(`[ImageValidation] File has valid extension but unexpected MIME type: ${file.type} for file: ${file.name}`);
   }
 
   return { valid: true };

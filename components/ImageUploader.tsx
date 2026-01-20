@@ -17,29 +17,88 @@ export default function ImageUploader({
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Sync preview with selectedImage prop
   useEffect(() => {
     if (selectedImage) {
       // Always recreate preview when selectedImage changes (new image selected)
       setPreview(null); // Clear old preview first
+      setLocalError(null);
+      setIsProcessing(true);
+      
+      // Add timeout to detect if FileReader hangs
+      const timeoutId = setTimeout(() => {
+        console.error('[ImageUploader] FileReader timeout after 10 seconds');
+        setLocalError('Image reading timed out. Please try again or use a different image.');
+        setPreview(null);
+        setIsProcessing(false);
+        onImageSelect(null);
+      }, 10000); // 10 second timeout
+      
       const reader = new FileReader();
+      
       reader.onload = (e) => {
-        if (e.target?.result) {
-          setPreview(e.target.result as string);
-          setLocalError(null);
+        clearTimeout(timeoutId);
+        try {
+          if (e.target?.result) {
+            const result = e.target.result as string;
+            // Verify it's actually a valid image data URL
+            if (result.startsWith('data:image/')) {
+              setPreview(result);
+              setLocalError(null);
+              setIsProcessing(false);
+              console.log('[ImageUploader] Preview created successfully');
+            } else {
+              throw new Error('Invalid image data format');
+            }
+          } else {
+            throw new Error('No result from FileReader');
+          }
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          console.error('[ImageUploader] Error processing FileReader result:', err);
+          setLocalError('Failed to process image. Please try a different image.');
+          setPreview(null);
+          setIsProcessing(false);
+          onImageSelect(null);
         }
       };
-      reader.onerror = () => {
-        setLocalError('Failed to read image file');
+      
+      reader.onerror = (e) => {
+        clearTimeout(timeoutId);
+        const error = reader.error || new Error('Unknown FileReader error');
+        console.error('[ImageUploader] FileReader error:', error);
+        setLocalError(`Failed to read image file: ${error.message || 'Unknown error'}`);
         setPreview(null);
+        setIsProcessing(false);
         onImageSelect(null);
       };
-      reader.readAsDataURL(selectedImage);
+      
+      reader.onabort = () => {
+        clearTimeout(timeoutId);
+        console.error('[ImageUploader] FileReader aborted');
+        setLocalError('Image reading was cancelled. Please try again.');
+        setPreview(null);
+        setIsProcessing(false);
+        onImageSelect(null);
+      };
+      
+      try {
+        reader.readAsDataURL(selectedImage);
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        console.error('[ImageUploader] Error starting FileReader:', err);
+        setLocalError(`Failed to start reading image: ${err.message || 'Unknown error'}`);
+        setPreview(null);
+        setIsProcessing(false);
+        onImageSelect(null);
+      }
     } else {
       // Clear preview when image is cleared
       setPreview(null);
       setLocalError(null);
+      setIsProcessing(false);
     }
   }, [selectedImage, onImageSelect]);
 
@@ -48,25 +107,58 @@ export default function ImageUploader({
       // Clear previous errors
       setLocalError(null);
       
+      // Log file info for debugging
+      console.log('[ImageUploader] Processing file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: new Date(file.lastModified).toISOString(),
+      });
+      
+      // Basic validation first
+      if (!file) {
+        const errorMsg = 'No file provided. Please select an image file.';
+        console.error('[ImageUploader]', errorMsg);
+        setLocalError(errorMsg);
+        onImageSelect(null);
+        return;
+      }
+
+      if (file.size === 0) {
+        const errorMsg = 'File is empty. Please select a valid image.';
+        console.error('[ImageUploader]', errorMsg);
+        setLocalError(errorMsg);
+        onImageSelect(null);
+        return;
+      }
+
+      // Validate file
       const validation = validateImageFile(file);
       if (!validation.valid) {
-        setLocalError(validation.error || 'Invalid image file');
+        const errorMsg = validation.error || 'Invalid image file';
+        console.error('[ImageUploader] Validation failed:', errorMsg);
+        setLocalError(errorMsg);
         onImageSelect(null); // Clear selection on error
         return;
       }
 
-      // Validate file is actually readable
-      if (file.size === 0) {
-        setLocalError('File is empty. Please select a valid image.');
+      // Verify file is actually a File object
+      if (!(file instanceof File)) {
+        const errorMsg = 'Invalid file object. Please select a valid image file.';
+        console.error('[ImageUploader]', errorMsg);
+        setLocalError(errorMsg);
         onImageSelect(null);
         return;
       }
 
       try {
         // Select the file - useEffect will handle creating the preview
+        console.log('[ImageUploader] File validated, calling onImageSelect');
         onImageSelect(file);
-      } catch (err) {
-        setLocalError('An error occurred while processing the image');
+      } catch (err: any) {
+        const errorMsg = `An error occurred while processing the image: ${err.message || 'Unknown error'}`;
+        console.error('[ImageUploader] Error in handleFile:', err);
+        setLocalError(errorMsg);
         onImageSelect(null);
         setPreview(null);
       }
@@ -101,13 +193,25 @@ export default function ImageUploader({
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
+      console.log('[ImageUploader] File input changed, file:', file ? {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      } : 'none');
+      
       if (file) {
         handleFile(file);
+        // Only reset input after successful processing (will be reset if error occurs)
+        // We'll reset it after a short delay to ensure the file was processed
+        setTimeout(() => {
+          e.target.value = '';
+        }, 100);
       } else {
-        setLocalError('No file selected. Please select an image file.');
+        const errorMsg = 'No file selected. Please select an image file.';
+        console.error('[ImageUploader]', errorMsg);
+        setLocalError(errorMsg);
+        e.target.value = ''; // Reset on error too
       }
-      // Reset input to allow selecting the same file again
-      e.target.value = '';
     },
     [handleFile]
   );
@@ -177,6 +281,14 @@ export default function ImageUploader({
           </div>
         ) : (
           <>
+            {isProcessing && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-xl">
+                <div className="text-center space-y-3">
+                  <div className="mx-auto w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Processing image...</p>
+                </div>
+              </div>
+            )}
             {isDragging && (
               <div className="absolute inset-0 flex items-center justify-center z-10 animate-in fade-in zoom-in-95 duration-200">
                 <div className="bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-semibold text-lg flex items-center gap-2">

@@ -63,8 +63,9 @@ export async function getImageCaptionWithBLIP(
   imageBase64: string,
   timeoutMs: number = 8000 // Optimized default timeout
 ): Promise<string> {
-  // Convert base64 to Buffer
+  // Convert base64 to Buffer, then to Uint8Array for Blob compatibility
   const imageBuffer = Buffer.from(imageBase64, 'base64');
+  const imageUint8Array = new Uint8Array(imageBuffer.buffer, imageBuffer.byteOffset, imageBuffer.byteLength);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -82,7 +83,7 @@ export async function getImageCaptionWithBLIP(
     try {
       // Use HTTP API directly with FormData (works in Node.js)
       const formData = new FormData();
-      formData.append('inputs', new Blob([imageBuffer], { type: 'image/jpeg' }));
+      formData.append('inputs', new Blob([imageUint8Array], { type: 'image/jpeg' }));
 
       const response = await fetch(
         `https://router.huggingface.co/models/${model}`,

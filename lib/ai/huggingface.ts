@@ -17,15 +17,23 @@ export async function analyzeImageWithHF(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Convert image to Buffer for FormData
-    let imageBuffer: Buffer;
+    // Convert image to ArrayBuffer for FormData (Blob compatibility)
+    let imageArrayBuffer: ArrayBuffer;
+    let base64Image: string;
     
     if (imageData instanceof File || imageData instanceof Blob) {
       const arrayBuffer = await imageData.arrayBuffer();
-      imageBuffer = Buffer.from(arrayBuffer);
+      // Create a copy to ensure we have a real ArrayBuffer (not SharedArrayBuffer)
+      imageArrayBuffer = arrayBuffer.slice(0);
+      // Convert to base64 for fallback JSON format
+      const imageBuffer = Buffer.from(arrayBuffer);
+      base64Image = imageBuffer.toString('base64');
     } else if (typeof imageData === 'string') {
-      // Base64 string
-      imageBuffer = Buffer.from(imageData, 'base64');
+      // Base64 string - convert to Buffer first, then to ArrayBuffer
+      const imageBuffer = Buffer.from(imageData, 'base64');
+      // Create a new ArrayBuffer with a copy of the data
+      imageArrayBuffer = imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+      base64Image = imageData; // Already base64
     } else {
       throw new Error('Unsupported image data type');
     }
@@ -37,7 +45,7 @@ export async function analyzeImageWithHF(
       try {
         // Try FormData first (standard format)
         const formData = new FormData();
-        formData.append('inputs', new Blob([imageBuffer], { type: 'image/jpeg' }));
+        formData.append('inputs', new Blob([imageArrayBuffer], { type: 'image/jpeg' }));
 
         let response = await fetch(
           `https://router.huggingface.co/models/${model}`,
@@ -55,7 +63,6 @@ export async function analyzeImageWithHF(
 
         // If FormData fails with 404/415, try JSON format with base64
         if (response.status === 404 || response.status === 415) {
-          const base64Image = imageBuffer.toString('base64');
           response = await fetch(
             `https://router.huggingface.co/models/${model}`,
             {
