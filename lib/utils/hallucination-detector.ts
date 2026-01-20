@@ -24,6 +24,25 @@ const HALLUCINATION_PHRASES = [
 ];
 
 /**
+ * Background elements that are often hallucinated (mentioned when not clearly visible)
+ */
+const POTENTIALLY_HALLUCINATED_BACKGROUNDS = [
+  'cityscape',
+  'sunset',
+  'sunrise',
+  'landscape',
+  'skyline',
+  'horizon',
+  'mountain',
+  'ocean',
+  'beach',
+  'forest',
+  'nature scene',
+  'urban scene',
+  'city view',
+];
+
+/**
  * Generic descriptions that don't reference specific visual elements
  */
 const GENERIC_DESCRIPTIONS = [
@@ -176,6 +195,34 @@ export function isHallucinating(result: AnalysisResult, mode?: string): boolean 
   const maxUncertainPhrases = isMarketingMode ? 1 : 2;
   if (uncertainPhraseCount > maxUncertainPhrases) {
     return true;
+  }
+  
+  // Check for potentially hallucinated background elements
+  // If mentioned without clear context, it might be hallucinated
+  const hasBackgroundMention = POTENTIALLY_HALLUCINATED_BACKGROUNDS.some(bg => 
+    descLower.includes(bg)
+  );
+  
+  // If background is mentioned but description is generic, likely hallucinated
+  if (hasBackgroundMention && isDescriptionTooGeneric(result.description || '')) {
+    return true;
+  }
+  
+  // Check issues and suggestions for hallucinated elements
+  const allText = [
+    result.description || '',
+    result.clarity || '',
+    ...(result.issues || []),
+    ...(result.suggestions || []),
+  ].join(' ').toLowerCase();
+  
+  // Check if background elements are mentioned in issues/suggestions without being in description
+  const backgroundInIssues = POTENTIALLY_HALLUCINATED_BACKGROUNDS.some(bg => 
+    allText.includes(bg) && !(result.description || '').toLowerCase().includes(bg)
+  );
+  
+  if (backgroundInIssues) {
+    return true; // Mentioning background in issues but not in description is suspicious
   }
   
   // Marketing mode: check for invented content indicators

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { validateImageFile } from '@/lib/utils/image';
 
 interface ImageUploaderProps {
@@ -16,22 +16,60 @@ export default function ImageUploader({
 }: ImageUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Sync preview with selectedImage prop
+  useEffect(() => {
+    if (selectedImage) {
+      // Always recreate preview when selectedImage changes (new image selected)
+      setPreview(null); // Clear old preview first
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setPreview(e.target.result as string);
+          setLocalError(null);
+        }
+      };
+      reader.onerror = () => {
+        setLocalError('Failed to read image file');
+        setPreview(null);
+        onImageSelect(null);
+      };
+      reader.readAsDataURL(selectedImage);
+    } else {
+      // Clear preview when image is cleared
+      setPreview(null);
+      setLocalError(null);
+    }
+  }, [selectedImage, onImageSelect]);
 
   const handleFile = useCallback(
     (file: File) => {
+      // Clear previous errors
+      setLocalError(null);
+      
       const validation = validateImageFile(file);
       if (!validation.valid) {
+        setLocalError(validation.error || 'Invalid image file');
+        onImageSelect(null); // Clear selection on error
         return;
       }
 
-      onImageSelect(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Validate file is actually readable
+      if (file.size === 0) {
+        setLocalError('File is empty. Please select a valid image.');
+        onImageSelect(null);
+        return;
+      }
+
+      try {
+        // Select the file - useEffect will handle creating the preview
+        onImageSelect(file);
+      } catch (err) {
+        setLocalError('An error occurred while processing the image');
+        onImageSelect(null);
+        setPreview(null);
+      }
     },
     [onImageSelect]
   );
@@ -44,6 +82,8 @@ export default function ImageUploader({
       const file = e.dataTransfer.files[0];
       if (file) {
         handleFile(file);
+      } else {
+        setLocalError('No file dropped. Please drop an image file.');
       }
     },
     [handleFile]
@@ -63,7 +103,11 @@ export default function ImageUploader({
       const file = e.target.files?.[0];
       if (file) {
         handleFile(file);
+      } else {
+        setLocalError('No file selected. Please select an image file.');
       }
+      // Reset input to allow selecting the same file again
+      e.target.value = '';
     },
     [handleFile]
   );
@@ -88,16 +132,16 @@ export default function ImageUploader({
       >
         {preview ? (
           <div className="space-y-4 w-full animate-in fade-in zoom-in-95 duration-500">
-            <div className="relative group">
+            <div className="relative group w-full flex items-center justify-center overflow-hidden rounded-xl max-h-64 p-2">
               <img
                 src={preview}
                 alt="Preview"
-                className="max-h-64 mx-auto rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-[1.02]"
+                className="max-h-[240px] max-w-full h-auto w-auto rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-[1.01] object-contain"
               />
               {/* Overlay gradient on hover */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"></div>
               {/* Success badge */}
-              <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 z-10">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -107,6 +151,7 @@ export default function ImageUploader({
             <button
               onClick={() => {
                 setPreview(null);
+                setLocalError(null);
                 onImageSelect(null);
               }}
               className="
@@ -182,13 +227,13 @@ export default function ImageUploader({
           </>
         )}
       </div>
-      {error && (
+      {(error || localError) && (
         <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
           <p className="text-sm text-red-600 dark:text-red-400 font-medium flex items-center gap-2">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            {error}
+            {error || localError}
           </p>
         </div>
       )}

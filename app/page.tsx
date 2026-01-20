@@ -84,7 +84,11 @@ export default function Home() {
         formData.append('customPrompt', customPrompt);
       }
       
-      // Include feedback context from previous analyses
+      // Add timestamp to prevent any caching
+      const timestamp = Date.now().toString();
+      formData.append('timestamp', timestamp);
+      
+      // Include feedback context from previous analyses (only generic feedback)
       try {
         const feedbacks = getFeedbackForMode(selectedMode);
         if (feedbacks.length > 0) {
@@ -95,9 +99,16 @@ export default function Home() {
         // Ignore errors reading feedback
       }
 
+      // Use cache: 'no-store' to ensure fresh analysis every time
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
+        cache: 'no-store', // Prevent any caching
+        headers: {
+          // Add cache control headers
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
       });
 
       if (!response.ok) {

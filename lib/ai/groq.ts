@@ -32,7 +32,7 @@ export async function generateFeedbackWithGroq(
           },
         ],
             model: 'llama-3.1-8b-instant',
-            temperature: 0.7,
+            temperature: 0.3, // Lower temperature to reduce hallucinations
             max_tokens: 4096, // Increased to prevent truncation
       },
       {

@@ -15,14 +15,20 @@ export async function analyzeImageWithGemini(
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     // Gemini Vision API - send image as base64 in inline_data
-    // Try gemini-1.5-flash first (faster, free tier), then gemini-1.5-pro, then gemini-pro-vision
-    const models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro-vision'];
+    // Use only gemini-1.5-flash (most reliable, free tier, confirmed working)
+    // Note: gemini-1.5-pro may not be available in free tier
+    const models = [
+      'gemini-1.5-flash', // Most reliable, free tier, confirmed working
+    ];
     let lastError: Error | null = null;
     
     for (const model of models) {
       try {
+        // Try v1 API first (more stable), fallback to v1beta if needed
+        // gemini-3 uses v1, gemini-1.5 uses v1, older models use v1beta
+        const apiVersion = model.includes('3') || model.includes('1.5') ? 'v1' : 'v1beta';
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: {
@@ -45,11 +51,11 @@ export async function analyzeImageWithGemini(
                 },
               ],
               generationConfig: {
-                // Lower temperature for marketing mode to reduce hallucinations
-                temperature: mode === 'marketing' ? 0.3 : 0.7,
+                // Lower temperature for all modes to reduce hallucinations and improve accuracy
+                temperature: 0.3,
                 maxOutputTokens: 8192, // Increased to prevent truncation
-                topP: mode === 'marketing' ? 0.8 : 0.95,
-                topK: mode === 'marketing' ? 20 : 40,
+                topP: 0.8,
+                topK: 20,
               },
             }),
             signal: controller.signal,

@@ -29,8 +29,10 @@ A Next.js web application that analyzes uploaded images and provides structured 
 
 - **Frontend**: Next.js 14+ (App Router), React, TypeScript, Tailwind CSS, React Icons
 - **Backend**: Next.js API Routes
-- **AI Services**:
-  - **Primary**: Google Gemini Vision API (gemini-1.5-flash, gemini-1.5-pro) - True vision-language model
+- **AI Services** (selectable via `VISION_MODEL` env var):
+  - **Claude 3.5 Sonnet** (Anthropic) - Excellent at following instructions, less hallucinations
+  - **GPT-4o** (OpenAI) - Great OCR accuracy, precise image analysis
+  - **Google Gemini** (gemini-1.5-flash, gemini-1.5-pro) - Free tier, good fallback
   - **Fallback 1**: Hugging Face Inference API (captioning models)
   - **Fallback 2**: BLIP image captioning + Groq LLM for structured feedback
 - **Deployment**: Vercel-ready (optimized for Vercel Pro plan with 60s timeout)
@@ -40,7 +42,10 @@ A Next.js web application that analyzes uploaded images and provides structured 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- **Recommended**: Google Gemini API key (best results for vision analysis)
+- **At least one** of the following API keys (all have free tiers):
+  - **Claude 3.5 Sonnet** (Anthropic) - Recommended for accuracy and following instructions
+  - **GPT-4o** (OpenAI) - Recommended for OCR and precise analysis
+  - **Google Gemini** - Free tier with generous limits
 - (Optional) Hugging Face API token for fallback
 - (Optional) Groq API key for last-resort fallback
 
@@ -59,20 +64,33 @@ npm install
 
 3. Create environment variables file:
 ```bash
-cp .env.example .env.local
+# Create .env.local file
+touch .env.local
 ```
 
-4. Add your API keys to `.env.local` (see `.env.example` for the template with links to generate tokens):
+4. Add your API keys to `.env.local`. See `ENV_SETUP.md` for complete instructions with all URLs and step-by-step guides:
 
 ### Getting API Keys
 
-- **Google Gemini** (Highly Recommended - Best Vision Model):
+- **Claude 3.5 Sonnet** (Anthropic) - **Recommended for accuracy**:
+  - Get your API key at [https://console.anthropic.com/](https://console.anthropic.com/)
+  - Free tier: $5 in credits to start (enough for testing)
+  - Excellent at following complex instructions and reducing hallucinations
+  - Set `ANTHROPIC_API_KEY` in your `.env.local`
+
+- **GPT-4o** (OpenAI) - **Recommended for OCR**:
+  - Get your API key at [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+  - Free tier: $5 in credits to start (enough for testing)
+  - Great OCR accuracy and precise image analysis
+  - Set `OPENAI_API_KEY` in your `.env.local`
+
+- **Google Gemini** - **Free tier available**:
   - Get your API key at [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
   - Free tier available with generous limits
-  - This is the **primary recommended API** for vision analysis - it actually sees and analyzes images
+  - Good fallback option
   - Set `GEMINI_API_KEY` in your `.env.local`
 
-- **Hugging Face** (Optional):
+- **Hugging Face** (Optional - Fallback):
   - Get your token at [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
   - **Token Type**: Select "Read" token (simplest option) or "Fine-grained" token with "Make calls to Inference Providers" permission enabled
   - The "Read" token is sufficient for calling public models via Inference API
@@ -82,13 +100,32 @@ cp .env.example .env.local
   - Get your API key at [https://console.groq.com/keys](https://console.groq.com/keys)
   - Only used as last resort when vision APIs fail (text-only, less accurate)
 
-**Note**: 
-- **Gemini is highly recommended** - it provides real image analysis, not generic responses
-- The app will try Gemini first (primary), then Hugging Face, then Groq as fallback
-- At minimum, set `GEMINI_API_KEY` for best results
-- The app includes automatic retry logic if responses are incomplete or empty
+### Selecting Which Model to Use
 
-See `.env.example` for the complete template with direct links to generate tokens.
+Set the `VISION_MODEL` environment variable to choose which model to use:
+
+- `VISION_MODEL=claude` - Use Claude 3.5 Sonnet (requires `ANTHROPIC_API_KEY`)
+- `VISION_MODEL=openai` - Use GPT-4o (requires `OPENAI_API_KEY`)
+- `VISION_MODEL=gemini` - Use Google Gemini (requires `GEMINI_API_KEY`)
+- `VISION_MODEL=auto` (default) - Automatically tries models in this order:
+  1. Claude 3.5 Sonnet (if `ANTHROPIC_API_KEY` is set)
+  2. GPT-4o (if `OPENAI_API_KEY` is set)
+  3. Google Gemini (if `GEMINI_API_KEY` is set)
+  4. Hugging Face (fallback)
+  5. BLIP + Groq (last resort)
+
+**Recommendations**:
+- For **best accuracy and fewer hallucinations**: Use `VISION_MODEL=claude`
+- For **best OCR (text reading)**: Use `VISION_MODEL=openai`
+- For **free tier testing**: Use `VISION_MODEL=gemini` (has generous free limits)
+- For **automatic selection**: Use `VISION_MODEL=auto` (default)
+
+**Note**: 
+- All models have free tiers to start (Claude and OpenAI give $5 credits, Gemini has generous free limits)
+- The app includes automatic retry logic if responses are incomplete or empty
+- You can test all models by changing the `VISION_MODEL` env var
+
+See `ENV_SETUP.md` for the complete template with all URLs, step-by-step instructions, and detailed explanations for each API key.
 
 ## Development
 
@@ -121,9 +158,13 @@ npm start
 2. Import your repository in [Vercel](https://vercel.com)
 
 3. Add environment variables in Vercel dashboard:
-   - `GEMINI_API_KEY` (highly recommended)
-   - `HF_API_TOKEN` (optional)
-   - `GROQ_API_KEY` (optional)
+   - `VISION_MODEL` (optional, default: `auto`) - Choose: `claude`, `openai`, `gemini`, or `auto`
+   - At least one API key:
+     - `ANTHROPIC_API_KEY` (for Claude)
+     - `OPENAI_API_KEY` (for GPT-4o)
+     - `GEMINI_API_KEY` (for Gemini - free tier available)
+   - `HF_API_TOKEN` (optional - fallback)
+   - `GROQ_API_KEY` (optional - last fallback)
 
 4. Deploy! Vercel will automatically build and deploy your app.
 
